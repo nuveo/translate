@@ -107,6 +107,7 @@ func (t *AuthRequest) GetAccessToken() TokenResponse {
 	return tr
 }
 
+// Return `text` in `from` language translated for `to` language
 func (t *TokenResponse) Translate(text, from, to string) (string, error) {
 
 	if t.CheckTimeout() == true {
@@ -149,6 +150,7 @@ func (t *TokenResponse) Translate(text, from, to string) (string, error) {
 	return obj.T, nil
 }
 
+// Return `texts` array in `from` language translated for `to` language
 func (t *TokenResponse) TranslateArray(texts []string, from, to string) ([]string, error) {
 	if t.CheckTimeout() == true {
 		return []string{}, errors.New("Access token is invalid, please get new token")

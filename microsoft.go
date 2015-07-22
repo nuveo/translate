@@ -42,6 +42,7 @@ const (
 type AuthRequest struct {
 	ClientId     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
+	HTTPClient   *http.Client
 }
 
 type TokenResponse struct {
@@ -50,6 +51,7 @@ type TokenResponse struct {
 	ExpiresIn   string    `json:"expires_in"`
 	Scope       string    `json:"scope"`
 	Timeout     time.Time `json:"timeout"`
+	HTTPClient  *http.Client
 }
 
 type TranslateResponse struct {
@@ -62,8 +64,12 @@ type ArrayResp struct {
 
 // Make a POST request to `datamark` url
 func (t *AuthRequest) GetAccessToken() TokenResponse {
-
-	client := &http.Client{}
+	var client *http.Client
+	if t.HTTPClient != nil {
+		client = t.HTTPClient
+	} else {
+		client = &http.Client{}
+	}
 
 	postValues := url.Values{}
 	postValues.Add("client_id", t.ClientId)
@@ -72,11 +78,10 @@ func (t *AuthRequest) GetAccessToken() TokenResponse {
 	postValues.Add("grant_type", grant_type)
 
 	req, err := http.NewRequest("POST", datamarket, strings.NewReader(postValues.Encode()))
-	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-
 	if err != nil {
 		log.Println(err)
 	}
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -113,14 +118,18 @@ func (t *TokenResponse) Translate(text, from, to string) (string, error) {
 	if t.CheckTimeout() == true {
 		return "", errors.New("Access token is invalid, please get new token")
 	}
-
-	client := &http.Client{}
-
 	textEncode := url.Values{}
 	textEncode.Add("text", text)
 	text = textEncode.Encode()
 
 	url := fmt.Sprintf("%s?%s&from=%s&to=%s", translateUrl, text, from, to)
+
+	var client *http.Client
+	if t.HTTPClient != nil {
+		client = t.HTTPClient
+	} else {
+		client = &http.Client{}
+	}
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -165,7 +174,13 @@ func (t *TokenResponse) TranslateArray(texts []string, from, to string) ([]strin
 	textToTranslate := strings.Join(toTranslate, "\n")
 	bodyReq := fmt.Sprintf(xmlArrayTemplate, from, textToTranslate, to)
 
-	client := &http.Client{}
+	var client *http.Client
+	if t.HTTPClient != nil {
+		client = t.HTTPClient
+	} else {
+		client = &http.Client{}
+	}
+
 	req, err := http.NewRequest("POST", translateArrayUrl, strings.NewReader(bodyReq))
 	if err != nil {
 		log.Println(err)

@@ -21,15 +21,20 @@ import (
 
 func main() {
   // gettind your credentials here in: http://www.microsoft.com/translator/getstarted.aspx
-  t := microsoft.AuthRequest{"client_id", "client_secret"}
+  t := &microsoft.AuthRequest{"client_id", "client_secret"}
   // Generate a token valid for 10 minutes
-  tokenResponse := t.GetAccessToken()
+  tokenResponse := microsoft.GetAccessToken(t)
 
   text := "one two three"
   from := "en"
   to := "pt"
+
+  toTranslate := &microsoft.TextTranslate{
+    Text: text, From: from, To: to, TokenResponse: tokenResponse,
+  }
+
   // Get translate of text, return the word translated and error
-  resp, err := tokenResponse.Translate(text, from, to)
+  resp, err := microsoft.TranslateText(toTranslate)
   if err != nil {
     log.Println(err)
   }
@@ -37,12 +42,16 @@ func main() {
 
   // or get translate of array of strings
   texts := []string{"one two three", "the book on the table"}
+  toTranslate = &microsoft.TextTranslate{
+    Texts: texts, From: from, To: to, TokenResponse: tokenResponse,
+  }
 
-  resp, err := tokenResponse.TranslateArray(texts, from, to)
+  resps, err := microsoft.TranslateTexts(toTranslate)
   if err != nil {
     log.Println(err)
   }
-  fmt.Println(resp) // um dois três, o livro em cima da mesa
+  fmt.Println(resps) // um dois três, o livro em cima da mesa
+
 }
 
 ```

@@ -46,6 +46,7 @@ type Access interface {
 type Translator interface {
 	Translate() (string, error)
 	TranslateArray() ([]string, error)
+	CheckTimeout() bool
 }
 
 type AuthRequest struct {
@@ -82,11 +83,17 @@ func GetAccessToken(access Access) TokenResponse {
 }
 
 func TranslateText(t Translator) (string, error) {
-	return t.Translate()
+	if t.CheckTimeout() == false {
+		return t.Translate()
+	}
+	return "", errors.New("Access token is invalid, please get new token")
 }
 
 func TranslateTexts(t Translator) ([]string, error) {
-	return t.TranslateArray()
+	if t.CheckTimeout() == false {
+		return t.TranslateArray()
+	}
+	return []string{}, errors.New("Access token is invalid, please get new token")
 }
 
 // Make a POST request to `datamark` url
@@ -136,10 +143,6 @@ func (a *AuthRequest) GetAccessToken() TokenResponse {
 
 // Return `text` in `from` language translated for `to` language
 func (t *TextTranslate) Translate() (string, error) {
-
-	if t.TokenResponse.CheckTimeout() == true {
-		return "", errors.New("Access token is invalid, please get new token")
-	}
 	textEncode := url.Values{}
 	textEncode.Add("text", t.Text)
 	text := textEncode.Encode()
@@ -177,9 +180,6 @@ func (t *TextTranslate) Translate() (string, error) {
 
 // Return `texts` array in `from` language translated for `to` language
 func (t *TextTranslate) TranslateArray() ([]string, error) {
-	if t.TokenResponse.CheckTimeout() == true {
-		return []string{}, errors.New("Access token is invalid, please get new token")
-	}
 	response := []string{}
 	toTranslate := make([]string, len(t.Texts))
 

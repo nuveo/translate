@@ -28,6 +28,11 @@ func (m *TokenResponseMock) TranslateArray() ([]string, error) {
 	return ret.Get(0).([]string), ret.Error(1)
 }
 
+func (m *TokenResponseMock) CheckTimeout() bool {
+	ret := m.Mock.Called()
+	return ret.Bool(0)
+}
+
 func makeValidTokenResponse() TokenResponse {
 	now := time.Now()
 	expires_in, _ := strconv.ParseInt("600", 10, 0)
@@ -58,6 +63,8 @@ func TestGetToken(t *testing.T) {
 
 func TestTranslateText(t *testing.T) {
 	mck := new(TokenResponseMock)
+
+	mck.On("CheckTimeout").Return(false)
 	mck.On("Translate").Return("um", nil)
 
 	text, _ := TranslateText(mck)
@@ -70,6 +77,8 @@ func TestTranslateText(t *testing.T) {
 
 func TestTranslateArrayText(t *testing.T) {
 	mck := new(TokenResponseMock)
+
+	mck.On("CheckTimeout").Return(false)
 	mck.On("TranslateArray").Return([]string{"um dois", "livro de fotos"}, nil)
 
 	text, _ := TranslateTexts(mck)
@@ -79,4 +88,18 @@ func TestTranslateArrayText(t *testing.T) {
 	assert := assert.New(t)
 	assert.Equal("um dois", text[0])
 	assert.Equal("livro de fotos", text[1])
+}
+
+func TestTranslateWithTokenExpired(t *testing.T) {
+	mck := new(TokenResponseMock)
+
+	mck.On("CheckTimeout").Return(true)
+	text, err := TranslateText(mck)
+
+	mck.AssertExpectations(t)
+
+	assert := assert.New(t)
+	assert.Equal("", text)
+	assert.EqualError(err, "Access token is invalid, please get new token")
+
 }

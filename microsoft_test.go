@@ -43,7 +43,8 @@ func makeValidTokenResponse() TokenResponse {
 
 func TestGetToken(t *testing.T) {
 	mockObj := new(AuthRequestMock)
-	mockObj.On("GetAccessToken").Return(TokenResponse{AccessToken: "s3cr3t0k3n", ExpiresIn: "600"})
+	tokenResponse := makeValidTokenResponse()
+	mockObj.On("GetAccessToken").Return(tokenResponse)
 
 	tr := GetAccessToken(mockObj)
 
@@ -52,6 +53,7 @@ func TestGetToken(t *testing.T) {
 	assert := assert.New(t)
 	assert.Equal("s3cr3t0k3n", tr.AccessToken)
 	assert.Equal("600", tr.ExpiresIn)
+	assert.False(tr.CheckTimeout())
 }
 
 func TestTranslateText(t *testing.T) {

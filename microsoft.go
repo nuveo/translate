@@ -19,6 +19,7 @@ const (
 	scope             = "http://api.microsofttranslator.com"
 	translateUrl      = "http://api.microsofttranslator.com/v2/Http.svc/Translate"
 	translateArrayUrl = "http://api.microsofttranslator.com/V2/Http.svc/TranslateArray"
+	detectArrayUrl    = "http://api.microsofttranslator.com/V2/Http.svc/DetectArray"
 	grant_type        = "client_credentials"
 	xmlArrayTemplate  = `<TranslateArrayRequest>
 						<AppId />
@@ -36,7 +37,8 @@ const (
 						</Texts>
 						<To>%s</To>
 					</TranslateArrayRequest>`
-	templateToTranslate = `<string xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">%s</string>`
+	templateToTranslate    = `<string xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">%s</string>`
+	xmlDetectArrayTemplate = `<ArrayOfstring xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">%s</ArrayOfstring>`
 )
 
 type AuthRequest struct {
@@ -157,6 +159,62 @@ func (t *TokenResponse) Translate(text, from, to string) (string, error) {
 	err = xml.Unmarshal(body, &obj)
 
 	return obj.T, nil
+}
+
+func (t *TokenResponse) DetectArray(texts []string) ([]string, error) {
+	if t.CheckTimeout() == true {
+		return []string{}, errors.New("Access token is invalid, please get new token")
+	}
+
+	response := []string{}
+	toTranslate := make([]string, len(texts))
+
+	for _, text := range texts {
+		t := fmt.Sprintf(templateToTranslate, text)
+		toTranslate = append(toTranslate, t)
+	}
+	textToTranslate := strings.Join(toTranslate, "\n")
+	bodyReq := fmt.Sprintf(xmlDetectArrayTemplate, textToTranslate)
+
+	var client *http.Client
+	if t.HTTPClient != nil {
+		client = t.HTTPClient
+	} else {
+		client = &http.Client{}
+	}
+
+	req, err := http.NewRequest("POST", detectArrayUrl, strings.NewReader(bodyReq))
+	if err != nil {
+		log.Println(err)
+	}
+
+	auth_token := fmt.Sprintf("Bearer %s", t.AccessToken)
+	req.Header.Add("Authorization", auth_token)
+	req.Header.Add("Content-Type", "text/xml")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println(err)
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println(err)
+	}
+	type LangArray struct {
+		Array []string `xml:"string"`
+	}
+
+	var obj LangArray
+	err = xml.Unmarshal(body, &obj)
+	if err != nil {
+		log.Println(err)
+	}
+
+	response = append(response, obj.Array...)
+	return response, nil
+
 }
 
 // Return `texts` array in `from` language translated for `to` language

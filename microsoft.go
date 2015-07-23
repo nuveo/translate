@@ -19,6 +19,7 @@ const (
 	scope             = "http://api.microsofttranslator.com"
 	translateUrl      = "http://api.microsofttranslator.com/v2/Http.svc/Translate"
 	translateArrayUrl = "http://api.microsofttranslator.com/V2/Http.svc/TranslateArray"
+	detectArrayUrl    = "http://api.microsofttranslator.com/V2/Http.svc/DetectArray"
 	grant_type        = "client_credentials"
 	xmlArrayTemplate  = `<TranslateArrayRequest>
 						<AppId />
@@ -36,7 +37,8 @@ const (
 						</Texts>
 						<To>%s</To>
 					</TranslateArrayRequest>`
-	templateToTranslate = `<string xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">%s</string>`
+	templateToTranslate    = `<string xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">%s</string>`
+	xmlDetectArrayTemplate = `<ArrayOfstring xmlns="http://schemas.microsoft.com/2003/10/Serialization/Arrays">%s</ArrayOfstring>`
 )
 
 type Access interface {
@@ -46,6 +48,7 @@ type Access interface {
 type Translator interface {
 	Translate() (string, error)
 	TranslateArray() ([]string, error)
+	DetectTextArray() ([]string, error)
 	CheckTimeout() bool
 }
 
@@ -55,11 +58,12 @@ type AuthRequest struct {
 }
 
 type TextTranslate struct {
-	Text          string
-	Texts         []string
-	From          string
-	To            string
-	TokenResponse TokenResponse
+	Text  string
+	Texts []string
+	From  string
+	To    string
+
+	TokenResponse
 }
 
 type TokenResponse struct {
@@ -96,7 +100,14 @@ func TranslateTexts(t Translator) ([]string, error) {
 	return []string{}, errors.New("Access token is invalid, please get new token")
 }
 
-// Make a POST request to `datamark` url
+func DetectText(t Translator) ([]string, error) {
+	if t.CheckTimeout() == false {
+		return t.DetectTextArray()
+	}
+	return []string{}, errors.New("Access token is invalid, please get new token")
+}
+
+// Make a POST request to `datamark` url for getting access token
 func (a *AuthRequest) GetAccessToken() TokenResponse {
 	client := &http.Client{}
 
@@ -141,7 +152,7 @@ func (a *AuthRequest) GetAccessToken() TokenResponse {
 	return tr
 }
 
-// Return `text` in `from` language translated for `to` language
+// Return `t.Text` in `t.From` language translated for `t.To` language
 func (t *TextTranslate) Translate() (string, error) {
 	textEncode := url.Values{}
 	textEncode.Add("text", t.Text)
@@ -178,7 +189,7 @@ func (t *TextTranslate) Translate() (string, error) {
 	return obj.T, nil
 }
 
-// Return `texts` array in `from` language translated for `to` language
+// Return `t.Texts` array in `t.From` language translated for `t.To` language
 func (t *TextTranslate) TranslateArray() ([]string, error) {
 	response := []string{}
 	toTranslate := make([]string, len(t.Texts))
@@ -221,6 +232,52 @@ func (t *TextTranslate) TranslateArray() ([]string, error) {
 		response = append(response, t.Text)
 	}
 
+	return response, nil
+}
+
+// Detects the language of the text passed in the array `t.Texts`
+func (t *TextTranslate) DetectTextArray() ([]string, error) {
+	response := []string{}
+	toTranslate := make([]string, len(t.Texts))
+
+	for _, text := range t.Texts {
+		tx := fmt.Sprintf(templateToTranslate, text)
+		toTranslate = append(toTranslate, tx)
+	}
+	textToTranslate := strings.Join(toTranslate, "\n")
+	bodyReq := fmt.Sprintf(xmlDetectArrayTemplate, textToTranslate)
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", detectArrayUrl, strings.NewReader(bodyReq))
+	if err != nil {
+		log.Println(err)
+	}
+
+	auth_token := fmt.Sprintf("Bearer %s", t.TokenResponse.AccessToken)
+	req.Header.Add("Authorization", auth_token)
+	req.Header.Add("Content-Type", "text/xml")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println(err)
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println(err)
+	}
+	type LangArray struct {
+		Array []string `xml:"string"`
+	}
+
+	var obj LangArray
+	err = xml.Unmarshal(body, &obj)
+	if err != nil {
+		log.Println(err)
+	}
+
+	response = append(response, obj.Array...)
 	return response, nil
 }
 

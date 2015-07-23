@@ -28,6 +28,11 @@ func (m *TokenResponseMock) TranslateArray() ([]string, error) {
 	return ret.Get(0).([]string), ret.Error(1)
 }
 
+func (m *TokenResponseMock) DetectTextArray() ([]string, error) {
+	ret := m.Mock.Called()
+	return ret.Get(0).([]string), ret.Error(1)
+}
+
 func (m *TokenResponseMock) CheckTimeout() bool {
 	ret := m.Mock.Called()
 	return ret.Bool(0)
@@ -88,6 +93,21 @@ func TestTranslateArrayText(t *testing.T) {
 	assert := assert.New(t)
 	assert.Equal("um dois", text[0])
 	assert.Equal("livro de fotos", text[1])
+}
+
+func TestDetectText(t *testing.T) {
+	mck := new(TokenResponseMock)
+
+	mck.On("CheckTimeout").Return(false)
+	mck.On("DetectTextArray").Return([]string{"en", "pt"}, nil)
+
+	text, _ := DetectText(mck)
+
+	mck.AssertExpectations(t)
+
+	assert := assert.New(t)
+	assert.Equal("en", text[0])
+	assert.Equal("pt", text[1])
 }
 
 func TestTranslateWithTokenExpired(t *testing.T) {

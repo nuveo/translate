@@ -30,28 +30,35 @@ func main() {
   to := "pt"
 
   toTranslate := &microsoft.TextTranslate{
-    Text: text, From: from, To: to, TokenResponse: tokenResponse,
+	Text: text, From: from, To: to, TokenResponse: tokenResponse,
   }
 
   // Get translate of text, return the word translated and error
   resp, err := microsoft.TranslateText(toTranslate)
   if err != nil {
-    log.Println(err)
+	log.Println(err)
   }
   fmt.Println(resp) // um dois três
 
-  // or get translate of array of strings
   texts := []string{"one two three", "the book on the table"}
-  toTranslate = &microsoft.TextTranslate{
-    Texts: texts, From: from, To: to, TokenResponse: tokenResponse,
-  }
+  toTranslate.Texts = texts
 
+  // or get translate of array of strings
   resps, err := microsoft.TranslateTexts(toTranslate)
   if err != nil {
-    log.Println(err)
+	log.Println(err)
   }
-  fmt.Println(resps) // um dois três, o livro em cima da mesa
+  fmt.Println(resps) // [um dois três o livro em cima da mesa]
 
+  // Detect the language of texts
+  detect := []string{"mundo", "world", "monde"}
+  toTranslate.Texts = detect
+
+  respsD, err := microsoft.DetectText(toTranslate)
+  if err != nil {
+	log.Println(err)
+  }
+  fmt.Println(respsD, toTranslate.Texts) // [es en fr]
 }
 
 ```

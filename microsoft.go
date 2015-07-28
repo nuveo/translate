@@ -19,10 +19,10 @@ import (
 const (
 	datamarket        = "https://datamarket.accesscontrol.windows.net/v2/OAuth2-13"
 	scope             = "http://api.microsofttranslator.com"
-	translateUrl      = "http://api.microsofttranslator.com/v2/Http.svc/Translate"
-	translateArrayUrl = "http://api.microsofttranslator.com/V2/Http.svc/TranslateArray"
-	detectArrayUrl    = "http://api.microsofttranslator.com/V2/Http.svc/DetectArray"
-	grant_type        = "client_credentials"
+	translateURL      = "http://api.microsofttranslator.com/v2/Http.svc/Translate"
+	translateArrayURL = "http://api.microsofttranslator.com/V2/Http.svc/TranslateArray"
+	detectArrayURL    = "http://api.microsofttranslator.com/V2/Http.svc/DetectArray"
+	grantType         = "client_credentials"
 	xmlArrayTemplate  = `<TranslateArrayRequest>
 						<AppId />
 						<From>%s</From>
@@ -55,7 +55,7 @@ type Translator interface {
 }
 
 type AuthRequest struct {
-	ClientId     string
+	ClientID     string
 	ClientSecret string
 }
 
@@ -124,10 +124,10 @@ func (a *AuthRequest) GetAccessToken() TokenResponse {
 	client := &http.Client{}
 
 	postValues := url.Values{}
-	postValues.Add("client_id", a.ClientId)
+	postValues.Add("client_id", a.ClientID)
 	postValues.Add("client_secret", a.ClientSecret)
 	postValues.Add("scope", scope)
-	postValues.Add("grant_type", grant_type)
+	postValues.Add("grant_type", grantType)
 
 	req, err := http.NewRequest("POST", datamarket, strings.NewReader(postValues.Encode()))
 	if err != nil {
@@ -153,14 +153,14 @@ func (a *AuthRequest) GetAccessToken() TokenResponse {
 	}
 
 	now := time.Now()
-	expires_in, err := strconv.ParseInt(tr.ExpiresIn, 10, 0)
+	expiresIn, err := strconv.ParseInt(tr.ExpiresIn, 10, 0)
 	if err != nil {
 		log.Println(err)
 	}
 
-	exp_time := now.Add(time.Duration(expires_in) * time.Second)
+	expTime := now.Add(time.Duration(expiresIn) * time.Second)
 	// 10 min
-	tr.Timeout = exp_time
+	tr.Timeout = expTime
 	return tr
 }
 
@@ -180,15 +180,15 @@ func (t *TextTranslate) Translate() (string, error) {
 	textEncode.Add("text", t.Text)
 	text := textEncode.Encode()
 
-	url := fmt.Sprintf("%s?%s&from=%s&to=%s", translateUrl, text, t.From, t.To)
+	url := fmt.Sprintf("%s?%s&from=%s&to=%s", translateURL, text, t.From, t.To)
 
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Println(err)
 	}
-	auth_token := fmt.Sprintf("Bearer %s", t.TokenResponse.AccessToken)
-	req.Header.Add("Authorization", auth_token)
+	authToken := fmt.Sprintf("Bearer %s", t.TokenResponse.AccessToken)
+	req.Header.Add("Authorization", authToken)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -259,13 +259,13 @@ func (t *TextTranslate) TranslateArray() ([]string, error) {
 	bodyReq := fmt.Sprintf(xmlArrayTemplate, t.From, textToTranslate, t.To)
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", translateArrayUrl, strings.NewReader(bodyReq))
+	req, err := http.NewRequest("POST", translateArrayURL, strings.NewReader(bodyReq))
 	if err != nil {
 		log.Println(err)
 	}
 
-	auth_token := fmt.Sprintf("Bearer %s", t.TokenResponse.AccessToken)
-	req.Header.Add("Authorization", auth_token)
+	authToken := fmt.Sprintf("Bearer %s", t.TokenResponse.AccessToken)
+	req.Header.Add("Authorization", authToken)
 	req.Header.Add("Content-Type", "text/xml")
 
 	resp, err := client.Do(req)
@@ -316,13 +316,13 @@ func (t *TextTranslate) DetectTextArray() ([]string, error) {
 	bodyReq := fmt.Sprintf(xmlDetectArrayTemplate, textToTranslate)
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", detectArrayUrl, strings.NewReader(bodyReq))
+	req, err := http.NewRequest("POST", detectArrayURL, strings.NewReader(bodyReq))
 	if err != nil {
 		log.Println(err)
 	}
 
-	auth_token := fmt.Sprintf("Bearer %s", t.TokenResponse.AccessToken)
-	req.Header.Add("Authorization", auth_token)
+	authToken := fmt.Sprintf("Bearer %s", t.TokenResponse.AccessToken)
+	req.Header.Add("Authorization", authToken)
 	req.Header.Add("Content-Type", "text/xml")
 
 	resp, err := client.Do(req)

@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/poorny/utils/cache"
 )
 
 const (
@@ -62,6 +64,7 @@ type TextTranslate struct {
 	Texts []string
 	From  string
 	To    string
+	Cache bool
 
 	TokenResponse
 }
@@ -105,6 +108,15 @@ func DetectText(t Translator) ([]string, error) {
 		return t.DetectTextArray()
 	}
 	return []string{}, errors.New("Access token is invalid, please get new token")
+}
+
+func rdbCache() *redis.Redis {
+	conn := redis.Connection{"tcp", ":6379", "7"}
+	rdb, err := conn.Dial()
+	if err != nil {
+		log.Fatal(err)
+	}
+	return rdb
 }
 
 // Make a POST request to `datamark` url for getting access token
@@ -154,6 +166,16 @@ func (a *AuthRequest) GetAccessToken() TokenResponse {
 
 // Return `t.Text` in `t.From` language translated for `t.To` language
 func (t *TextTranslate) Translate() (string, error) {
+
+	if t.Cache == true {
+		rdb := rdbCache()
+		exists, _ := rdb.Exists(t.Text)
+		if exists == false {
+			result, _ := rdb.Get(t.Text)
+			rdb.Conn.Close()
+			return result, nil
+		}
+	}
 	textEncode := url.Values{}
 	textEncode.Add("text", t.Text)
 	text := textEncode.Encode()
@@ -185,6 +207,11 @@ func (t *TextTranslate) Translate() (string, error) {
 
 	var obj Text
 	err = xml.Unmarshal(body, &obj)
+	if t.Cache == true {
+		rdb := rdbCache()
+		rdb.Set(t.Text, obj.T)
+		rdb.Conn.Close()
+	}
 
 	return obj.T, nil
 }
@@ -194,10 +221,40 @@ func (t *TextTranslate) TranslateArray() ([]string, error) {
 	response := []string{}
 	toTranslate := make([]string, len(t.Texts))
 
-	for _, text := range t.Texts {
-		t := fmt.Sprintf(templateToTranslate, text)
-		toTranslate = append(toTranslate, t)
+	// Simulate possible indexes of array response from microsoft.
+	var notCached map[string]int
+	count := 0
+
+	if t.Cache == true {
+		rdb := rdbCache()
+		for _, tx := range t.Texts {
+			exs, _ := rdb.Exists(tx)
+
+			if exs == true {
+				res, err := rdb.Get(tx)
+				if err != nil {
+					log.Fatal(err)
+				}
+				response = append(response, res)
+			} else {
+				ts := fmt.Sprintf(templateToTranslate, tx)
+				toTranslate = append(toTranslate, ts)
+				notCached[tx] = count
+				count++
+			}
+		}
+		rdb.Conn.Close()
+	} else {
+		for _, text := range t.Texts {
+			tx := fmt.Sprintf(templateToTranslate, text)
+			toTranslate = append(toTranslate, tx)
+		}
 	}
+
+	if len(response) == len(t.Texts) {
+		return response, nil
+	}
+
 	textToTranslate := strings.Join(toTranslate, "\n")
 	bodyReq := fmt.Sprintf(xmlArrayTemplate, t.From, textToTranslate, t.To)
 
@@ -228,8 +285,19 @@ func (t *TextTranslate) TranslateArray() ([]string, error) {
 		log.Println(err)
 	}
 
-	for _, t := range obj.Resp {
-		response = append(response, t.Text)
+	for _, r := range obj.Resp {
+		response = append(response, r.Text)
+	}
+
+	if t.Cache == true {
+		rdb := rdbCache()
+		for key, indx := range notCached {
+			err = rdb.Set(key, obj.Resp[indx].Text)
+			if err != nil {
+				log.Println(err)
+			}
+		}
+		rdb.Conn.Close()
 	}
 
 	return response, nil

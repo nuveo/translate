@@ -3,6 +3,18 @@
 	"GoVersion": "go1.4.2",
 	"Deps": [
 		{
+			"ImportPath": "github.com/garyburd/redigo/internal",
+			"Rev": "a47585eaae68b1d14b02940d2af1b9194f3caa9c"
+		},
+		{
+			"ImportPath": "github.com/garyburd/redigo/redis",
+			"Rev": "a47585eaae68b1d14b02940d2af1b9194f3caa9c"
+		},
+		{
+			"ImportPath": "github.com/poorny/utils/cache",
+			"Rev": "4e0bd358e3718ebfc68c53bd96e8c224eb6be4b2"
+		},
+		{
 			"ImportPath": "github.com/stretchr/objx",
 			"Rev": "cbeaeb16a013161a98496fad62933b1d21786672"
 		},

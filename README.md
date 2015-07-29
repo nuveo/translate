@@ -62,3 +62,16 @@ func main() {
 }
 
 ```
+
+### Support to cache with Redis
+
+Now Translate make cache of words translated.
+
+```go
+
+  // to activate cache
+  toTranslate := &microsoft.TextTranslate{
+	Text: text, From: from, To: to, TokenResponse: tokenResponse, Cache: true,
+  }
+
+```

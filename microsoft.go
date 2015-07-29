@@ -12,15 +12,17 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/poorny/utils/cache"
 )
 
 const (
 	datamarket        = "https://datamarket.accesscontrol.windows.net/v2/OAuth2-13"
 	scope             = "http://api.microsofttranslator.com"
-	translateUrl      = "http://api.microsofttranslator.com/v2/Http.svc/Translate"
-	translateArrayUrl = "http://api.microsofttranslator.com/V2/Http.svc/TranslateArray"
-	detectArrayUrl    = "http://api.microsofttranslator.com/V2/Http.svc/DetectArray"
-	grant_type        = "client_credentials"
+	translateURL      = "http://api.microsofttranslator.com/v2/Http.svc/Translate"
+	translateArrayURL = "http://api.microsofttranslator.com/V2/Http.svc/TranslateArray"
+	detectArrayURL    = "http://api.microsofttranslator.com/V2/Http.svc/DetectArray"
+	grantType         = "client_credentials"
 	xmlArrayTemplate  = `<TranslateArrayRequest>
 						<AppId />
 						<From>%s</From>
@@ -53,7 +55,7 @@ type Translator interface {
 }
 
 type AuthRequest struct {
-	ClientId     string
+	ClientID     string
 	ClientSecret string
 }
 
@@ -62,6 +64,7 @@ type TextTranslate struct {
 	Texts []string
 	From  string
 	To    string
+	Cache bool
 
 	TokenResponse
 }
@@ -107,15 +110,24 @@ func DetectText(t Translator) ([]string, error) {
 	return []string{}, errors.New("Access token is invalid, please get new token")
 }
 
+func rdbCache() *redis.Redis {
+	conn := redis.Connection{"tcp", ":6379", "7"}
+	rdb, err := conn.Dial()
+	if err != nil {
+		log.Println("Fail to connect: ", err)
+	}
+	return rdb
+}
+
 // Make a POST request to `datamark` url for getting access token
 func (a *AuthRequest) GetAccessToken() TokenResponse {
 	client := &http.Client{}
 
 	postValues := url.Values{}
-	postValues.Add("client_id", a.ClientId)
+	postValues.Add("client_id", a.ClientID)
 	postValues.Add("client_secret", a.ClientSecret)
 	postValues.Add("scope", scope)
-	postValues.Add("grant_type", grant_type)
+	postValues.Add("grant_type", grantType)
 
 	req, err := http.NewRequest("POST", datamarket, strings.NewReader(postValues.Encode()))
 	if err != nil {
@@ -141,32 +153,43 @@ func (a *AuthRequest) GetAccessToken() TokenResponse {
 	}
 
 	now := time.Now()
-	expires_in, err := strconv.ParseInt(tr.ExpiresIn, 10, 0)
+	expiresIn, err := strconv.ParseInt(tr.ExpiresIn, 10, 0)
 	if err != nil {
 		log.Println(err)
 	}
 
-	exp_time := now.Add(time.Duration(expires_in) * time.Second)
+	expTime := now.Add(time.Duration(expiresIn) * time.Second)
 	// 10 min
-	tr.Timeout = exp_time
+	tr.Timeout = expTime
 	return tr
 }
 
 // Return `t.Text` in `t.From` language translated for `t.To` language
 func (t *TextTranslate) Translate() (string, error) {
+
+	if t.Cache == true {
+		rdb := rdbCache()
+		exists, _ := rdb.HExists(t.Text, t.To)
+		if exists == true {
+			result, _ := rdb.HGet(t.Text, t.To)
+			log.Printf("Getting from cache %s:%s", t.Text, result)
+			rdb.Conn.Close()
+			return result, nil
+		}
+	}
 	textEncode := url.Values{}
 	textEncode.Add("text", t.Text)
 	text := textEncode.Encode()
 
-	url := fmt.Sprintf("%s?%s&from=%s&to=%s", translateUrl, text, t.From, t.To)
+	url := fmt.Sprintf("%s?%s&from=%s&to=%s", translateURL, text, t.From, t.To)
 
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Println(err)
 	}
-	auth_token := fmt.Sprintf("Bearer %s", t.TokenResponse.AccessToken)
-	req.Header.Add("Authorization", auth_token)
+	authToken := fmt.Sprintf("Bearer %s", t.TokenResponse.AccessToken)
+	req.Header.Add("Authorization", authToken)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -185,6 +208,12 @@ func (t *TextTranslate) Translate() (string, error) {
 
 	var obj Text
 	err = xml.Unmarshal(body, &obj)
+	if t.Cache == true {
+		rdb := rdbCache()
+		rdb.HSet(t.Text, t.To, obj.T)
+		log.Printf("Add to cache %s:[%s] -> %s", t.Text, t.To, obj.T)
+		rdb.Conn.Close()
+	}
 
 	return obj.T, nil
 }
@@ -194,21 +223,52 @@ func (t *TextTranslate) TranslateArray() ([]string, error) {
 	response := []string{}
 	toTranslate := make([]string, len(t.Texts))
 
-	for _, text := range t.Texts {
-		t := fmt.Sprintf(templateToTranslate, text)
-		toTranslate = append(toTranslate, t)
+	// Simulate possible indexes of array response from microsoft.
+	notCached := make(map[string]int)
+	count := 0
+
+	if t.Cache == true {
+		rdb := rdbCache()
+		for _, tx := range t.Texts {
+			exs, _ := rdb.HExists(tx, t.To)
+
+			if exs == true {
+				res, err := rdb.HGet(tx, t.To)
+				log.Printf("Getting from cache %s:[%s] -> %s", tx, t.To, res)
+				if err != nil {
+					log.Println(err)
+				}
+				response = append(response, res)
+			} else {
+				notCached[tx] = count
+				ts := fmt.Sprintf(templateToTranslate, tx)
+				toTranslate = append(toTranslate, ts)
+				count++
+			}
+		}
+		rdb.Conn.Close()
+	} else {
+		for _, text := range t.Texts {
+			tx := fmt.Sprintf(templateToTranslate, text)
+			toTranslate = append(toTranslate, tx)
+		}
 	}
+
+	if len(response) == len(t.Texts) {
+		return response, nil
+	}
+
 	textToTranslate := strings.Join(toTranslate, "\n")
 	bodyReq := fmt.Sprintf(xmlArrayTemplate, t.From, textToTranslate, t.To)
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", translateArrayUrl, strings.NewReader(bodyReq))
+	req, err := http.NewRequest("POST", translateArrayURL, strings.NewReader(bodyReq))
 	if err != nil {
 		log.Println(err)
 	}
 
-	auth_token := fmt.Sprintf("Bearer %s", t.TokenResponse.AccessToken)
-	req.Header.Add("Authorization", auth_token)
+	authToken := fmt.Sprintf("Bearer %s", t.TokenResponse.AccessToken)
+	req.Header.Add("Authorization", authToken)
 	req.Header.Add("Content-Type", "text/xml")
 
 	resp, err := client.Do(req)
@@ -228,8 +288,23 @@ func (t *TextTranslate) TranslateArray() ([]string, error) {
 		log.Println(err)
 	}
 
-	for _, t := range obj.Resp {
-		response = append(response, t.Text)
+	for _, r := range obj.Resp {
+		response = append(response, r.Text)
+	}
+
+	if t.Cache == true {
+		rdb := rdbCache()
+		if len(notCached) == len(response) {
+			for key, indx := range notCached {
+				tx := response[indx]
+				log.Printf("Add to cache %s:[%s] %s", key, t.To, tx)
+				err = rdb.HSet(key, t.To, tx)
+				if err != nil {
+					log.Println(err)
+				}
+			}
+		}
+		rdb.Conn.Close()
 	}
 
 	return response, nil
@@ -248,13 +323,13 @@ func (t *TextTranslate) DetectTextArray() ([]string, error) {
 	bodyReq := fmt.Sprintf(xmlDetectArrayTemplate, textToTranslate)
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", detectArrayUrl, strings.NewReader(bodyReq))
+	req, err := http.NewRequest("POST", detectArrayURL, strings.NewReader(bodyReq))
 	if err != nil {
 		log.Println(err)
 	}
 
-	auth_token := fmt.Sprintf("Bearer %s", t.TokenResponse.AccessToken)
-	req.Header.Add("Authorization", auth_token)
+	authToken := fmt.Sprintf("Bearer %s", t.TokenResponse.AccessToken)
+	req.Header.Add("Authorization", authToken)
 	req.Header.Add("Content-Type", "text/xml")
 
 	resp, err := client.Do(req)

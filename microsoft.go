@@ -114,7 +114,7 @@ func rdbCache() *redis.Redis {
 	conn := redis.Connection{"tcp", ":6379", "7"}
 	rdb, err := conn.Dial()
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Fail to connect: ", err)
 	}
 	return rdb
 }
@@ -169,9 +169,10 @@ func (t *TextTranslate) Translate() (string, error) {
 
 	if t.Cache == true {
 		rdb := rdbCache()
-		exists, _ := rdb.Exists(t.Text)
-		if exists == false {
-			result, _ := rdb.Get(t.Text)
+		exists, _ := rdb.HExists(t.Text, t.To)
+		if exists == true {
+			result, _ := rdb.HGet(t.Text, t.To)
+			log.Printf("Getting from cache %s:%s", t.Text, result)
 			rdb.Conn.Close()
 			return result, nil
 		}
@@ -209,7 +210,8 @@ func (t *TextTranslate) Translate() (string, error) {
 	err = xml.Unmarshal(body, &obj)
 	if t.Cache == true {
 		rdb := rdbCache()
-		rdb.Set(t.Text, obj.T)
+		rdb.HSet(t.Text, t.To, obj.T)
+		log.Printf("Add to cache %s:[%s] -> %s", t.Text, t.To, obj.T)
 		rdb.Conn.Close()
 	}
 
@@ -222,24 +224,25 @@ func (t *TextTranslate) TranslateArray() ([]string, error) {
 	toTranslate := make([]string, len(t.Texts))
 
 	// Simulate possible indexes of array response from microsoft.
-	var notCached map[string]int
+	notCached := make(map[string]int)
 	count := 0
 
 	if t.Cache == true {
 		rdb := rdbCache()
 		for _, tx := range t.Texts {
-			exs, _ := rdb.Exists(tx)
+			exs, _ := rdb.HExists(tx, t.To)
 
 			if exs == true {
-				res, err := rdb.Get(tx)
+				res, err := rdb.HGet(tx, t.To)
+				log.Printf("Getting from cache %s:[%s] -> %s", tx, t.To, res)
 				if err != nil {
-					log.Fatal(err)
+					log.Println(err)
 				}
 				response = append(response, res)
 			} else {
+				notCached[tx] = count
 				ts := fmt.Sprintf(templateToTranslate, tx)
 				toTranslate = append(toTranslate, ts)
-				notCached[tx] = count
 				count++
 			}
 		}
@@ -291,10 +294,14 @@ func (t *TextTranslate) TranslateArray() ([]string, error) {
 
 	if t.Cache == true {
 		rdb := rdbCache()
-		for key, indx := range notCached {
-			err = rdb.Set(key, obj.Resp[indx].Text)
-			if err != nil {
-				log.Println(err)
+		if len(notCached) == len(response) {
+			for key, indx := range notCached {
+				tx := response[indx]
+				log.Printf("Add to cache %s:[%s] %s", key, t.To, tx)
+				err = rdb.HSet(key, t.To, tx)
+				if err != nil {
+					log.Println(err)
+				}
 			}
 		}
 		rdb.Conn.Close()

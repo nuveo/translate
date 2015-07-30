@@ -240,8 +240,12 @@ func (t *TextTranslate) TranslateArray() ([]string, error) {
 				}
 				response = append(response, res)
 			} else {
+				textEncode := url.Values{}
+				textEncode.Add("text", tx)
+				text := textEncode.Encode()
+
 				notCached[tx] = count
-				ts := fmt.Sprintf(templateToTranslate, tx)
+				ts := fmt.Sprintf(templateToTranslate, text)
 				toTranslate = append(toTranslate, ts)
 				count++
 			}
@@ -249,6 +253,10 @@ func (t *TextTranslate) TranslateArray() ([]string, error) {
 		rdb.Conn.Close()
 	} else {
 		for _, text := range t.Texts {
+			textEncode := url.Values{}
+			textEncode.Add("text", text)
+			text := textEncode.Encode()
+
 			tx := fmt.Sprintf(templateToTranslate, text)
 			toTranslate = append(toTranslate, tx)
 		}
@@ -316,6 +324,10 @@ func (t *TextTranslate) DetectTextArray() ([]string, error) {
 	toTranslate := make([]string, len(t.Texts))
 
 	for _, text := range t.Texts {
+		textEncode := url.Values{}
+		textEncode.Add("text", text)
+		text := textEncode.Encode()
+
 		tx := fmt.Sprintf(templateToTranslate, text)
 		toTranslate = append(toTranslate, tx)
 	}

@@ -177,6 +177,7 @@ func (t *TextTranslate) Translate() (string, error) {
 			return result, nil
 		}
 	}
+
 	textEncode := url.Values{}
 	textEncode.Add("text", t.Text)
 	text := textEncode.Encode()
@@ -220,8 +221,8 @@ func (t *TextTranslate) Translate() (string, error) {
 
 // Return `t.Texts` array in `t.From` language translated for `t.To` language
 func (t *TextTranslate) TranslateArray() ([]string, error) {
-	response := []string{}
 	toTranslate := make([]string, len(t.Texts))
+	response := []string{}
 
 	// Simulate possible indexes of array response from microsoft.
 	notCached := make(map[string]int)
@@ -232,20 +233,9 @@ func (t *TextTranslate) TranslateArray() ([]string, error) {
 		for _, tx := range t.Texts {
 			exs, _ := rdb.HExists(tx, t.To)
 
-			if exs == true {
-				res, err := rdb.HGet(tx, t.To)
-				log.Printf("Getting from cache %s:[%s] -> %s", tx, t.To, res)
-				if err != nil {
-					log.Println(err)
-				}
-				response = append(response, res)
-			} else {
-				textEncode := url.Values{}
-				textEncode.Add("text", tx)
-				text := textEncode.Encode()
-
+			if exs == false {
 				notCached[tx] = count
-				ts := fmt.Sprintf(templateToTranslate, text)
+				ts := fmt.Sprintf(templateToTranslate, tx)
 				toTranslate = append(toTranslate, ts)
 				count++
 			}
@@ -253,16 +243,21 @@ func (t *TextTranslate) TranslateArray() ([]string, error) {
 		rdb.Conn.Close()
 	} else {
 		for _, text := range t.Texts {
-			textEncode := url.Values{}
-			textEncode.Add("text", text)
-			text := textEncode.Encode()
-
 			tx := fmt.Sprintf(templateToTranslate, text)
 			toTranslate = append(toTranslate, tx)
 		}
 	}
 
-	if len(response) == len(t.Texts) {
+	// If do not need to do translation
+	if len(notCached) == 0 {
+		rdb := rdbCache()
+		for _, tx := range t.Texts {
+			res, _ := rdb.HGet(tx, t.To)
+			if res != "" {
+				response = append(response, res)
+			}
+		}
+		rdb.Conn.Close()
 		return response, nil
 	}
 
@@ -296,25 +291,26 @@ func (t *TextTranslate) TranslateArray() ([]string, error) {
 		log.Println(err)
 	}
 
-	for _, r := range obj.Resp {
-		response = append(response, r.Text)
-	}
-
-	if t.Cache == true {
+	if t.Cache == true && len(obj.Resp) > 0 {
 		rdb := rdbCache()
-		if len(notCached) == len(response) {
-			for key, indx := range notCached {
-				tx := response[indx]
-				log.Printf("Add to cache %s:[%s] %s", key, t.To, tx)
-				err = rdb.HSet(key, t.To, tx)
-				if err != nil {
-					log.Println(err)
-				}
+		for key, indx := range notCached {
+			tx := obj.Resp[indx].Text
+			log.Printf("Add to cache %s: [%s] %s", key, t.To, tx)
+
+			err = rdb.HSet(key, t.To, tx)
+			if err != nil {
+				log.Println(err)
+			}
+		}
+
+		for _, tx := range t.Texts {
+			res, _ := rdb.HGet(tx, t.To)
+			if res != "" {
+				response = append(response, res)
 			}
 		}
 		rdb.Conn.Close()
 	}
-
 	return response, nil
 }
 

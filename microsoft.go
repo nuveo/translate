@@ -253,6 +253,7 @@ func (t *TextTranslate) TranslateArray() ([]string, error) {
 		rdb := rdbCache()
 		for _, tx := range t.Texts {
 			res, _ := rdb.HGet(tx, t.To)
+			log.Printf("Get from cache %s: [%s] %s", tx, t.To, res)
 			if res != "" {
 				response = append(response, res)
 			}
@@ -305,6 +306,7 @@ func (t *TextTranslate) TranslateArray() ([]string, error) {
 
 		for _, tx := range t.Texts {
 			res, _ := rdb.HGet(tx, t.To)
+			log.Printf("Get from cache %s: [%s] %s", tx, t.To, res)
 			if res != "" {
 				response = append(response, res)
 			}

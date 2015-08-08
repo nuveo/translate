@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -111,7 +112,11 @@ func DetectText(t Translator) ([]string, error) {
 }
 
 func rdbCache() *redis.Redis {
-	conn := redis.Connection{"tcp", ":6379", "7"}
+	redisUri := os.Getenv("REDIS")
+	if redisUri == "" {
+		redisUri = ":6739"
+	}
+	conn := redis.Connection{"tcp", redisUri, "7"}
 	rdb, err := conn.Dial()
 	if err != nil {
 		log.Println("Fail to connect: ", err)

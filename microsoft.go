@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/poorny/utils/cache"
+	"github.com/nuveo/utils/cache"
 )
 
 const (

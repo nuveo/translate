@@ -2,7 +2,7 @@
 Go online translation package
 
 ##### Install
-`go get github.com/poorny/translate`
+`go get github.com/nuveo/translate`
 
 ## Available Translator API's
  * [Microsoft](http://www.microsoft.com/translator/getstarted.aspx)
@@ -16,7 +16,7 @@ package main
 import (
   "fmt"
   "log"
-  "github.com/poorny/translate"
+  "github.com/nuveo/translate"
 )
 
 func main() {
